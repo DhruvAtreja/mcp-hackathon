@@ -1,99 +1,85 @@
 import { z } from 'zod';
-import { AuthenticatedRequest } from '@src/server/auth';
-import { Sequelize, Op } from 'sequelize'; // Assuming Sequelize and Op for LIKE query
-import { CallToolResult } from '@modelcontextprotocol/sdk/types.js'; // Import CallToolResult
-// Assuming Memory model type will be available via db.models.Memory
+import { getDb } from '@src/db/models'; // For DB instance
+import { Op } from 'sequelize'; // Assuming Op is still needed if not using raw SQL
+import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export const retrievePersonalMemoryName = "retrieve_personal_memory";
 export const retrievePersonalMemoryDescription = "Retrieve your own memories based on a search query.";
 
 export const RetrievePersonalMemoryInputSchema = z.object({
-  query: z.string().min(1, "Search query cannot be empty."),
+  query: z.string().min(1, "Search query cannot be empty.")
 });
 
-export type RetrievePersonalMemoryInput = z.infer<typeof RetrievePersonalMemoryInputSchema>;
-
-// Define a content item type that matches what CallToolResult expects
-interface TextContentItem {
-  type: "text";
-  text: string;
-  [key: string]: unknown;
-}
-
-// Define a return type that is compatible with CallToolResult
-export type RetrieveMemoryToolResult = CallToolResult;
-
-export async function retrievePersonalMemoryHandler(
-  input: RetrievePersonalMemoryInput,
-  req: AuthenticatedRequest,
-  db: Sequelize // db is the Sequelize instance
-): Promise<RetrieveMemoryToolResult> {
-  const userId = req.user?.id;
-
+// Internal handler logic
+async function internalRetrievePersonalMemoryHandler(
+  input: z.infer<typeof RetrievePersonalMemoryInputSchema>,
+  userId: string | undefined
+): Promise<CallToolResult> {
   if (!userId) {
-    // This case should ideally be prevented by the authMiddleware.
     return {
       structuredContent: {},
-      content: [{
-        type: "text" as const,
-        text: "Error: User not authenticated. Cannot retrieve memories."
-      }]
+      content: [{ type: "text" as const, text: "Error: User not authenticated." }]
     };
   }
 
   const { query } = input;
+  const db = getDb(); // Get DB instance
 
   try {
-    // Access the Memory model through the db instance
-    const MemoryModel = db.models.Memory;
-    if (!MemoryModel) {
-        console.error("Memory model is not defined on db.models");
-        return {
-            structuredContent: {},
-            content: [{
-              type: "text" as const,
-              text: "Error: Server configuration issue, Memory model not found."
-            }]
-        };
-    }
-
-    const memories = await MemoryModel.findAll({
-      where: {
-        user_id: userId,
-        content: {
-          [Op.like]: `%${query}%`, // Case-insensitive search for most SQL dialects
-        },
-      },
-      order: [['createdAt', 'DESC']], // Show most recent relevant memories first
-      limit: 10, // Limit the number of results to keep responses manageable
-    });
+    // Using raw SQL with sqlite instead of Sequelize model syntax for this example
+    // as the original `db.models.Memory` might not be set up in this context.
+    // This also simplifies dependencies for this specific tool file.
+    const memories = await db.all(
+      `SELECT id, content, createdAt FROM Memory WHERE user_id = ? AND content LIKE ? ORDER BY createdAt DESC LIMIT 10`,
+      userId,
+      `%${query}%`
+    );
 
     if (!memories || memories.length === 0) {
       return {
         structuredContent: {},
-        content: [{
-          type: "text" as const,
-          text: "No memories found matching your query."
-        }]
+        content: [{ type: "text" as const, text: "No memories found matching your query." }]
       };
     }
 
     return {
-      structuredContent: {},
+      structuredContent: { retrieved_count: memories.length }, // Example structured content
       content: memories.map((mem: any) => ({
         type: "text" as const,
-        text: `Memory (ID: ${mem.id}): "${mem.content}" (Recalled from: ${mem.createdAt.toISOString().split('T')[0]})`
+        text: `Memory (ID: ${mem.id}): \"${mem.content}\" (Recalled from: ${new Date(mem.createdAt).toISOString().split('T')[0]})`
       }))
     };
   } catch (error: any) {
-    console.error("Error in retrievePersonalMemoryHandler:", error);
-    // Provide a generic error message to the user
+    console.error("Error in internalRetrievePersonalMemoryHandler:", error);
     return {
-      structuredContent: {},
-      content: [{
-        type: "text" as const,
-        text: `An error occurred while retrieving memories: ${error.message}`
-      }]
+      structuredContent: { error: error.message },
+      content: [{ type: "text" as const, text: `An error occurred: ${error.message}` }]
     };
   }
+}
+
+// MCP Tool Definition
+const retrievePersonalMemoryToolDefinition = {
+  name: retrievePersonalMemoryName,
+  description: retrievePersonalMemoryDescription,
+  inputSchema: RetrievePersonalMemoryInputSchema.shape, // Pass .shape for McpServer.tool
+  handler: async (params: z.infer<typeof RetrievePersonalMemoryInputSchema>, extra: any): Promise<CallToolResult> => {
+    const userId = extra?.authenticatedUserId;
+    const effectiveUserId = userId || "mock_user_id_for_retrieve"; // Placeholder
+     if (!userId) {
+        console.warn(`retrieve_personal_memory: authenticatedUserId not found in 'extra' context. Using placeholder: ${effectiveUserId}`);
+    }
+    return internalRetrievePersonalMemoryHandler(params, effectiveUserId);
+  }
+};
+
+// Exported registration function
+export function registerRetrievePersonalMemoryTool(server: McpServer) {
+  server.tool(
+    retrievePersonalMemoryToolDefinition.name,
+    retrievePersonalMemoryToolDefinition.inputSchema,
+    retrievePersonalMemoryToolDefinition.handler
+  );
+  console.log(`Tool registered: ${retrievePersonalMemoryToolDefinition.name}`);
 } 

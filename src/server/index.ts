@@ -1,122 +1,71 @@
-import express, { Request, Response } from 'express';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { initDb } from '@src/db/models';
-import { authMiddleware, AuthenticatedRequest } from './auth';
-// Import the refactored tool components
-import { 
-  saveMemoryName,
-  SaveMemoryInputSchema,
-  saveMemoryHandler,
-  saveMemoryDescription // We capture description, though server.tool() might not use it directly
-} from '@src/tools/save-memory';
-// Import the new tool components for retrieving memories
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { initDb } from "@src/db/models";
+
+// Import tool registration functions from access-control.ts
 import {
-  retrievePersonalMemoryName,
-  RetrievePersonalMemoryInputSchema,
-  retrievePersonalMemoryHandler,
-  retrievePersonalMemoryDescription
-} from '@src/tools/retrieve-personal-memory';
-// Import tool handlers here once created
-import { z } from 'zod';
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-
-// Health check route
-app.get('/health', (req: Request, res: Response) => {
-  res.status(200).send('Server is healthy');
-});
+  registerCreateAccessTokenTool,
+  registerUseAccessTokenTool,
+  registerRetrieveSharedMemoryTool,
+} from "../tools/access-control.js";
+import { registerSaveMemoryTool } from "../tools/save-memory.js";
+import { registerRetrievePersonalMemoryTool } from "../tools/retrieve-personal-memory.js";
 
 async function main() {
-  // Initialize database
-  const db = await initDb();
+  console.error("SkyNet MCP Server: Initializing database...");
+  await initDb();
+  console.error("SkyNet MCP Server: Database initialized.");
 
-  // Initialize MCP Server
-  const mcpServer = new McpServer({
-    name: "SkyNetMCPServer",
-    version: "1.0.0",
-    // logger: console, // Optional: for verbose logging
-  });
+  // Use console.error for server-side logging to keep stdout clean for JSON-RPC
+  console.error("SkyNet MCP Server: Initializing...");
 
-  // Register both tools using the approach from the blog post
-  mcpServer.tool(
-    "save_memory",
-    { content: z.string() },
-    async ({ content }) => {
-      // Call the handler with our context and pass db
-      try {
-        const fakeRequest = { user: { id: "default-user" } } as AuthenticatedRequest;
-        return await saveMemoryHandler({ content }, fakeRequest, db as any);
-      } catch (err) {
-        console.error("Error in save_memory tool:", err);
-        return {
-          structuredContent: {},
-          content: [{ type: "text", text: `Error: ${err}` }]
-        };
-      }
+  const server = new McpServer(
+    {
+      name: "skynet-mcp-server",
+      version: "0.1.0",
+      capabilities: {
+        tools: {}, // Declare that this server provides tools
+        // resources: {}, // Future use
+        // prompts: {},   // Future use
+      },
     }
   );
 
-  // Register the retrieve_personal_memory tool
-  mcpServer.tool(
-    "retrieve_personal_memory",
-    { query: z.string() },
-    async ({ query }) => {
-      // Call the handler with our context and pass db
-      try {
-        const fakeRequest = { user: { id: "default-user" } } as AuthenticatedRequest;
-        return await retrievePersonalMemoryHandler({ query }, fakeRequest, db as any);
-      } catch (err) {
-        console.error("Error in retrieve_personal_memory tool:", err);
-        return {
-          structuredContent: {},
-          content: [{ type: "text", text: `Error: ${err}` }]
-        };
-      }
-    }
-  );
+  console.error("SkyNet MCP Server: Registering tools...");
+  // Register the access control tools
+  registerCreateAccessTokenTool(server);
+  registerUseAccessTokenTool(server);
+  registerRetrieveSharedMemoryTool(server);
 
-  // For description, it might be that the McpServer constructor can take a general
-  // description, or tools are expected to have self-descriptive names.
-  // Or, the description might be part of an options object for server.tool if it exists.
-  // For now, `saveMemoryDescription` is not directly used in this registration call.
+  // Register memory tools
+  registerSaveMemoryTool(server);
+  registerRetrievePersonalMemoryTool(server);
 
-  // Setup MCP transport
-  const mcpTransport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => "", // Return an empty string for the session ID
-    // Add any other transport-specific options here if needed
-  });
+  // TODO: Register other tools from the plan (save_memory, retrieve_personal_memory) if/when implemented
+  // e.g.:
+  // import { registerSaveMemoryTool } from "../tools/save-memory.js";
+  // import { registerRetrievePersonalMemoryTool } from "../tools/retrieve-personal-memory.js";
+  // registerSaveMemoryTool(server); (assuming it's updated for the new McpServer API)
+  // registerRetrievePersonalMemoryTool(server); (assuming it's updated)
 
-  // Connect server to transport
-  await mcpServer.connect(mcpTransport);
+  console.error("SkyNet MCP Server: All tools registered.");
 
-  // Apply auth middleware and MCP handler to MCP routes
-  app.all('/mcp', authMiddleware as any, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      await mcpTransport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error('Error handling MCP request:', error);
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          error: { code: -32603, message: 'Internal server error' },
-        });
-      }
-    }
-  });
+  const transport = new StdioServerTransport();
+  
+  try {
+    // Connect the server instance to the chosen transport
+    await server.connect(transport);
+    console.error("SkyNet MCP Server: Connected to stdio transport. Listening for requests...");
+  } catch (error) {
+    console.error("SkyNet MCP Server: Fatal error during server connection or while running:", error);
+    process.exit(1); // Exit if the server cannot start or encounters a fatal error
+  }
 
-  app.get('/', (req: Request, res: Response) => {
-    res.send('SkyNet MCP Server is running!');
-  });
-
-  app.listen(PORT, () => {
-    console.log(`SkyNet MCP Server listening at http://localhost:${PORT}`);
-  });
+  // The server is now running and will handle requests over stdio.
+  // It will continue until the transport is closed (e.g., client disconnects).
 }
 
-main().catch(console.error);
-
-console.log("Relinting index.ts after save-memory.ts handler return type change."); 
+main().catch((error) => {
+  console.error("SkyNet MCP Server: Unhandled fatal error in main execution:", error);
+  process.exit(1);
+}); 

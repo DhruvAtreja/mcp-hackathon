@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getDb } from '@src/db/models';
 import { v4 as uuidv4 } from 'uuid';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'; // For McpServer type
 
 // Name and Description
 export const saveMemoryName = "save_memory";
@@ -42,49 +43,34 @@ export type SaveMemoryToolResult = CallToolResult;
 // Remove old HandlerContext, use official types for the handler context
 // export interface HandlerContext { ... }
 
-// Handler function
-export async function saveMemoryHandler(
+// Re-defining internal handler to be called by the MCP tool handler
+async function internalSaveMemoryHandler(
   input: z.infer<typeof SaveMemoryInputSchema>,
-  context: any, // Temporarily set to any to simplify type checking at call site
-  db: any  // Added db parameter explicitly to match how it's called
-): Promise<SaveMemoryToolResult> {
-  // Note: we'll use the passed db instead of getDb()
-  
-  // How to get the Express request object (and req.user) from RequestHandlerExtra?
-  // We need to inspect the type of RequestHandlerExtra or assume it has a similar structure.
-  // For now, let's assume it might have `rawRequest` or a similar field that holds the original Express request.
-  // This is a common pattern. If not, this part will need adjustment.
-  // @ts-ignore - temporarily ignore until we know the structure of RequestHandlerExtra
-  const user = context?.user || context.req?.user || context.rawRequest?.user; // Keep trying to find user
-
-  if (!user || !user.id) {
-    // @ts-ignore
-    console.error('User not authenticated or user ID missing. Context keys:', context ? Object.keys(context) : 'null context');
+  userId: string | undefined // Changed from context to explicit userId
+): Promise<CallToolResult> {
+  if (!userId) {
+    console.error('User not authenticated or user ID missing.');
     return {
       structuredContent: {
         success: false,
-        message: "User not authenticated. Cannot save memory. Please ensure you are logged in.",
+        message: "User not authenticated. Cannot save memory.",
       }
     };
   }
 
   const memoryId = uuidv4();
   const currentTime = new Date().toISOString();
+  const db = getDb(); // Get DB instance here
 
   try {
-    // Use passed db or fallback to getDb()
-    const dbToUse = db || getDb();
-    await dbToUse.run(
+    await db.run(
       'INSERT INTO Memory (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
       memoryId,
-      user.id,
+      userId,
       input.content,
       currentTime,
       currentTime
     );
-
-    // TODO: Add vector embedding generation and storage in ChromaDB here
-    // console.log(`Memory saved for user ${user.id} with ID ${memoryId}. TODO: ChromaDB integration`);
 
     return {
       structuredContent: {
@@ -95,7 +81,7 @@ export async function saveMemoryHandler(
       content: [{ 
         type: 'text' as const, 
         text: "Memory saved successfully."
-      } as TextContent] // Optional convenience text
+      }] 
     };
   } catch (error: any) {
     console.error("Error saving memory to SQLite:", error);
@@ -106,4 +92,34 @@ export async function saveMemoryHandler(
       }
     };
   }
-} 
+}
+
+// MCP Tool Definition
+const saveMemoryToolDefinition = {
+  name: saveMemoryName,
+  description: saveMemoryDescription,
+  inputSchema: SaveMemoryInputSchema.shape, // Pass .shape for McpServer.tool
+  handler: async (params: z.infer<typeof SaveMemoryInputSchema>, extra: any): Promise<CallToolResult> => {
+    const userId = extra?.authenticatedUserId; // Get userId from MCP context
+    // In a real app, ensure `authenticatedUserId` is consistently populated by your auth setup for MCP.
+    // For now, we can use a placeholder if it's missing for testing, or throw an error.
+    const effectiveUserId = userId || "mock_user_id_for_save_memory"; // Placeholder if not in extra
+    if (!userId) {
+        console.warn(`save_memory: authenticatedUserId not found in 'extra' context. Using placeholder: ${effectiveUserId}`);
+    }
+    return internalSaveMemoryHandler(params, effectiveUserId);
+  }
+};
+
+// Exported registration function
+export function registerSaveMemoryTool(server: McpServer) {
+  server.tool(
+    saveMemoryToolDefinition.name,
+    saveMemoryToolDefinition.inputSchema,
+    saveMemoryToolDefinition.handler
+  );
+  console.log(`Tool registered: ${saveMemoryToolDefinition.name}`);
+}
+
+// Original saveMemoryHandler and other exports are removed or integrated above
+// to avoid conflicts and streamline for MCP registration. 
