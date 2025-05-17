@@ -17,10 +17,13 @@ const models_js_2 = require("../db/models.js"); // Import default user ID
 const uuid_1 = require("uuid");
 // Name and Description
 exports.saveMemoryName = "save_memory";
-exports.saveMemoryDescription = "Save a personal memory for later retrieval by the user.";
+exports.saveMemoryDescription = "Saves a piece of text content as a personal memory for you (the authenticated user). " +
+    "Use this tool when you want to remember a specific fact, note, or piece of information for later personal recall. " +
+    "The memory will be associated with your user identity.";
 // Input Schema
 exports.SaveMemoryInputSchema = zod_1.z.object({
-    content: zod_1.z.string().min(1, { message: "Memory content cannot be empty. Please provide some text for the memory." }),
+    content: zod_1.z.string().min(1, { message: "Memory content cannot be empty. Please provide the text you want to remember." })
+        .describe("The textual content of the memory you want to save."),
 });
 // Output Schema - for documentation and potential validation, though server.tool() might not use it directly
 exports.SaveMemoryOutputSchema = zod_1.z.object({
@@ -66,12 +69,19 @@ const saveMemoryToolDefinition = {
     inputSchema: exports.SaveMemoryInputSchema.shape,
     handler: (params, extra) => __awaiter(void 0, void 0, void 0, function* () {
         const authenticatedUserId = extra === null || extra === void 0 ? void 0 : extra.authenticatedUserId;
-        // Fallback to DEFAULT_TEST_USER_ID if no user in context
         const userIdToUse = authenticatedUserId || models_js_2.DEFAULT_TEST_USER_ID;
+        let messagePrefix = "";
         if (!authenticatedUserId) {
+            messagePrefix = `(No authenticated user found, saving for default user '${models_js_2.DEFAULT_TEST_USER_ID}'). `;
             console.warn(`save_memory: authenticatedUserId not found in 'extra' context. Using default: ${models_js_2.DEFAULT_TEST_USER_ID}`);
         }
-        return internalSaveMemoryHandler(params, userIdToUse);
+        // Call the internal handler which already formats detailed success/error messages
+        const result = yield internalSaveMemoryHandler(params, userIdToUse);
+        // Prepend context message if necessary
+        if (result.content && result.content.length > 0 && typeof result.content[0].text === 'string') {
+            result.content[0].text = messagePrefix + result.content[0].text;
+        }
+        return result;
     })
 };
 // Exported registration function

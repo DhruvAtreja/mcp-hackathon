@@ -7,10 +7,14 @@ import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 export const retrievePersonalMemoryName = "retrieve_personal_memory";
-export const retrievePersonalMemoryDescription = "Retrieve your own memories based on a search query.";
+export const retrievePersonalMemoryDescription = 
+  "Searches and retrieves your own previously saved personal memories based on a query. " +
+  "Use this when you need to recall information you've asked to be remembered. " +
+  "Memories are specific to you (the authenticated user).";
 
 export const RetrievePersonalMemoryInputSchema = z.object({
   query: z.string().min(1, "Search query cannot be empty.")
+    .describe("The search query or keywords to find your relevant personal memories. Be as specific as possible for better results."),
 });
 
 // Internal handler logic using actual DB operations
@@ -56,13 +60,20 @@ const retrievePersonalMemoryToolDefinition = {
   inputSchema: RetrievePersonalMemoryInputSchema.shape,
   handler: async (params: z.infer<typeof RetrievePersonalMemoryInputSchema>, extra: any): Promise<CallToolResult> => {
     const authenticatedUserId = extra?.authenticatedUserId;
-    // Fallback to DEFAULT_TEST_USER_ID if no user in context
     const userIdToUse = authenticatedUserId || DEFAULT_TEST_USER_ID; 
     
+    let messagePrefix = "";
     if (!authenticatedUserId) {
+        messagePrefix = `(No authenticated user found, retrieving for default user '${DEFAULT_TEST_USER_ID}'). `;
         console.warn(`retrieve_personal_memory: authenticatedUserId not found in 'extra' context. Using default: ${DEFAULT_TEST_USER_ID}`);
     }
-    return internalRetrievePersonalMemoryHandler(params, userIdToUse);
+    
+    const result = await internalRetrievePersonalMemoryHandler(params, userIdToUse);
+    
+    if (result.content && result.content.length > 0 && typeof result.content[0].text === 'string') {
+        result.content[0].text = messagePrefix + result.content[0].text;
+    }
+    return result;
   }
 };
 

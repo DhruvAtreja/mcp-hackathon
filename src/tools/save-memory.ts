@@ -8,11 +8,15 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'; // For McpS
 
 // Name and Description
 export const saveMemoryName = "save_memory";
-export const saveMemoryDescription = "Save a personal memory for later retrieval by the user.";
+export const saveMemoryDescription = 
+  "Saves a piece of text content as a personal memory for you (the authenticated user). " +
+  "Use this tool when you want to remember a specific fact, note, or piece of information for later personal recall. " +
+  "The memory will be associated with your user identity.";
 
 // Input Schema
 export const SaveMemoryInputSchema = z.object({
-  content: z.string().min(1, { message: "Memory content cannot be empty. Please provide some text for the memory." }),
+  content: z.string().min(1, { message: "Memory content cannot be empty. Please provide the text you want to remember." })
+    .describe("The textual content of the memory you want to save."),
 });
 
 // Output Schema - for documentation and potential validation, though server.tool() might not use it directly
@@ -76,16 +80,25 @@ async function internalSaveMemoryHandler(
 const saveMemoryToolDefinition = {
   name: saveMemoryName,
   description: saveMemoryDescription,
-  inputSchema: SaveMemoryInputSchema.shape, // Pass .shape for McpServer.tool
+  inputSchema: SaveMemoryInputSchema.shape,
   handler: async (params: z.infer<typeof SaveMemoryInputSchema>, extra: any): Promise<CallToolResult> => {
     const authenticatedUserId = extra?.authenticatedUserId;
-    // Fallback to DEFAULT_TEST_USER_ID if no user in context
     const userIdToUse = authenticatedUserId || DEFAULT_TEST_USER_ID; 
 
+    let messagePrefix = "";
     if (!authenticatedUserId) {
+        messagePrefix = `(No authenticated user found, saving for default user '${DEFAULT_TEST_USER_ID}'). `;
         console.warn(`save_memory: authenticatedUserId not found in 'extra' context. Using default: ${DEFAULT_TEST_USER_ID}`);
     }
-    return internalSaveMemoryHandler(params, userIdToUse);
+    
+    // Call the internal handler which already formats detailed success/error messages
+    const result = await internalSaveMemoryHandler(params, userIdToUse);
+    
+    // Prepend context message if necessary
+    if (result.content && result.content.length > 0 && typeof result.content[0].text === 'string') {
+        result.content[0].text = messagePrefix + result.content[0].text;
+    }
+    return result;
   }
 };
 

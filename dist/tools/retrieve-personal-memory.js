@@ -14,9 +14,12 @@ const zod_1 = require("zod");
 const models_js_1 = require("../db/models.js"); // Use relative path
 const models_js_2 = require("../db/models.js"); // Import default user ID
 exports.retrievePersonalMemoryName = "retrieve_personal_memory";
-exports.retrievePersonalMemoryDescription = "Retrieve your own memories based on a search query.";
+exports.retrievePersonalMemoryDescription = "Searches and retrieves your own previously saved personal memories based on a query. " +
+    "Use this when you need to recall information you've asked to be remembered. " +
+    "Memories are specific to you (the authenticated user).";
 exports.RetrievePersonalMemoryInputSchema = zod_1.z.object({
     query: zod_1.z.string().min(1, "Search query cannot be empty.")
+        .describe("The search query or keywords to find your relevant personal memories. Be as specific as possible for better results."),
 });
 // Internal handler logic using actual DB operations
 function internalRetrievePersonalMemoryHandler(input, userIdToUse // Now expects a definite userId
@@ -54,12 +57,17 @@ const retrievePersonalMemoryToolDefinition = {
     inputSchema: exports.RetrievePersonalMemoryInputSchema.shape,
     handler: (params, extra) => __awaiter(void 0, void 0, void 0, function* () {
         const authenticatedUserId = extra === null || extra === void 0 ? void 0 : extra.authenticatedUserId;
-        // Fallback to DEFAULT_TEST_USER_ID if no user in context
         const userIdToUse = authenticatedUserId || models_js_2.DEFAULT_TEST_USER_ID;
+        let messagePrefix = "";
         if (!authenticatedUserId) {
+            messagePrefix = `(No authenticated user found, retrieving for default user '${models_js_2.DEFAULT_TEST_USER_ID}'). `;
             console.warn(`retrieve_personal_memory: authenticatedUserId not found in 'extra' context. Using default: ${models_js_2.DEFAULT_TEST_USER_ID}`);
         }
-        return internalRetrievePersonalMemoryHandler(params, userIdToUse);
+        const result = yield internalRetrievePersonalMemoryHandler(params, userIdToUse);
+        if (result.content && result.content.length > 0 && typeof result.content[0].text === 'string') {
+            result.content[0].text = messagePrefix + result.content[0].text;
+        }
+        return result;
     })
 };
 function registerRetrievePersonalMemoryTool(server) {
