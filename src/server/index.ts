@@ -10,7 +10,15 @@ import {
   saveMemoryHandler,
   saveMemoryDescription // We capture description, though server.tool() might not use it directly
 } from '@src/tools/save-memory';
+// Import the new tool components for retrieving memories
+import {
+  retrievePersonalMemoryName,
+  RetrievePersonalMemoryInputSchema,
+  retrievePersonalMemoryHandler,
+  retrievePersonalMemoryDescription
+} from '@src/tools/retrieve-personal-memory';
 // Import tool handlers here once created
+import { z } from 'zod';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,14 +41,44 @@ async function main() {
     // logger: console, // Optional: for verbose logging
   });
 
-  // Register tools using the 5-argument server.tool() method
+  // Register both tools using the approach from the blog post
   mcpServer.tool(
-    saveMemoryName,
-    saveMemoryDescription, 
-    SaveMemoryInputSchema.shape, 
-    { title: saveMemoryDescription }, // Annotations: using description as title for now
-    saveMemoryHandler
+    "save_memory",
+    { content: z.string() },
+    async ({ content }) => {
+      // Call the handler with our context and pass db
+      try {
+        const fakeRequest = { user: { id: "default-user" } } as AuthenticatedRequest;
+        return await saveMemoryHandler({ content }, fakeRequest, db as any);
+      } catch (err) {
+        console.error("Error in save_memory tool:", err);
+        return {
+          structuredContent: {},
+          content: [{ type: "text", text: `Error: ${err}` }]
+        };
+      }
+    }
   );
+
+  // Register the retrieve_personal_memory tool
+  mcpServer.tool(
+    "retrieve_personal_memory",
+    { query: z.string() },
+    async ({ query }) => {
+      // Call the handler with our context and pass db
+      try {
+        const fakeRequest = { user: { id: "default-user" } } as AuthenticatedRequest;
+        return await retrievePersonalMemoryHandler({ query }, fakeRequest, db as any);
+      } catch (err) {
+        console.error("Error in retrieve_personal_memory tool:", err);
+        return {
+          structuredContent: {},
+          content: [{ type: "text", text: `Error: ${err}` }]
+        };
+      }
+    }
+  );
+
   // For description, it might be that the McpServer constructor can take a general
   // description, or tools are expected to have self-descriptive names.
   // Or, the description might be part of an options object for server.tool if it exists.
