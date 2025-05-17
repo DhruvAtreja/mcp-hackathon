@@ -2,7 +2,14 @@ import express, { Request, Response } from 'express';
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { initDb } from '@src/db/models';
-import { authMiddleware } from './auth';
+import { authMiddleware, AuthenticatedRequest } from './auth';
+// Import the refactored tool components
+import { 
+  saveMemoryName,
+  SaveMemoryInputSchema,
+  saveMemoryHandler,
+  saveMemoryDescription // We capture description, though server.tool() might not use it directly
+} from '@src/tools/save-memory';
 // Import tool handlers here once created
 
 const app = express();
@@ -26,12 +33,18 @@ async function main() {
     // logger: console, // Optional: for verbose logging
   });
 
-  // Register tools (example, will be fleshed out later)
-  // mcpServer.registerTool(saveMemoryTool);
-  // mcpServer.registerTool(retrievePersonalMemoryTool);
-  // mcpServer.registerTool(createAccessTokenTool);
-  // mcpServer.registerTool(useAccessTokenTool);
-  // mcpServer.registerTool(retrieveSharedMemoryTool);
+  // Register tools using the 5-argument server.tool() method
+  mcpServer.tool(
+    saveMemoryName,
+    saveMemoryDescription, 
+    SaveMemoryInputSchema.shape, 
+    { title: saveMemoryDescription }, // Annotations: using description as title for now
+    saveMemoryHandler
+  );
+  // For description, it might be that the McpServer constructor can take a general
+  // description, or tools are expected to have self-descriptive names.
+  // Or, the description might be part of an options object for server.tool if it exists.
+  // For now, `saveMemoryDescription` is not directly used in this registration call.
 
   // Setup MCP transport
   const mcpTransport = new StreamableHTTPServerTransport({
@@ -43,7 +56,7 @@ async function main() {
   await mcpServer.connect(mcpTransport);
 
   // Apply auth middleware and MCP handler to MCP routes
-  app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
+  app.all('/mcp', authMiddleware as any, async (req: AuthenticatedRequest, res: Response) => {
     try {
       await mcpTransport.handleRequest(req, res, req.body);
     } catch (error) {
@@ -66,4 +79,6 @@ async function main() {
   });
 }
 
-main().catch(console.error); 
+main().catch(console.error);
+
+console.log("Relinting index.ts after save-memory.ts handler return type change."); 
