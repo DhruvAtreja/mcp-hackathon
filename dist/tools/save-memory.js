@@ -9,10 +9,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.saveMemoryHandler = exports.SaveMemoryOutputPayloadSchema = exports.SaveMemoryOutputSchema = exports.SaveMemoryInputSchema = exports.saveMemoryDescription = exports.saveMemoryName = void 0;
+exports.registerSaveMemoryTool = exports.SaveMemoryOutputPayloadSchema = exports.SaveMemoryOutputSchema = exports.SaveMemoryInputSchema = exports.saveMemoryDescription = exports.saveMemoryName = void 0;
 const zod_1 = require("zod");
 // Removed problematic import: import { RequestHandlerExtra, ServerRequest, ServerNotification } from '@modelcontextprotocol/sdk/types.js';
-const models_1 = require("@src/db/models");
+const models_js_1 = require("../db/models.js");
+const models_js_2 = require("../db/models.js"); // Import default user ID
 const uuid_1 = require("uuid");
 // Name and Description
 exports.saveMemoryName = "save_memory";
@@ -35,58 +36,49 @@ exports.SaveMemoryOutputPayloadSchema = zod_1.z.object({
 });
 // Remove old HandlerContext, use official types for the handler context
 // export interface HandlerContext { ... }
-// Handler function
-function saveMemoryHandler(input, context, // Temporarily set to any to simplify type checking at call site
-db // Added db parameter explicitly to match how it's called
+// Re-defining internal handler to be called by the MCP tool handler
+function internalSaveMemoryHandler(input, userIdToUse // Now expects a definite userId
 ) {
-    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
-        // Note: we'll use the passed db instead of getDb()
-        // How to get the Express request object (and req.user) from RequestHandlerExtra?
-        // We need to inspect the type of RequestHandlerExtra or assume it has a similar structure.
-        // For now, let's assume it might have `rawRequest` or a similar field that holds the original Express request.
-        // This is a common pattern. If not, this part will need adjustment.
-        // @ts-ignore - temporarily ignore until we know the structure of RequestHandlerExtra
-        const user = (context === null || context === void 0 ? void 0 : context.user) || ((_a = context.req) === null || _a === void 0 ? void 0 : _a.user) || ((_b = context.rawRequest) === null || _b === void 0 ? void 0 : _b.user); // Keep trying to find user
-        if (!user || !user.id) {
-            // @ts-ignore
-            console.error('User not authenticated or user ID missing. Context keys:', context ? Object.keys(context) : 'null context');
-            return {
-                structuredContent: {
-                    success: false,
-                    message: "User not authenticated. Cannot save memory. Please ensure you are logged in.",
-                }
-            };
-        }
         const memoryId = (0, uuid_1.v4)();
         const currentTime = new Date().toISOString();
+        const db = (0, models_js_1.getDb)();
         try {
-            // Use passed db or fallback to getDb()
-            const dbToUse = db || (0, models_1.getDb)();
-            yield dbToUse.run('INSERT INTO Memory (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', memoryId, user.id, input.content, currentTime, currentTime);
-            // TODO: Add vector embedding generation and storage in ChromaDB here
-            // console.log(`Memory saved for user ${user.id} with ID ${memoryId}. TODO: ChromaDB integration`);
+            yield db.run('INSERT INTO Memory (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', memoryId, userIdToUse, input.content, currentTime, currentTime);
+            const message = `Memory saved successfully. ID: ${memoryId} for user ${userIdToUse}`;
             return {
-                structuredContent: {
-                    success: true,
-                    memoryId: memoryId,
-                    message: "Memory saved successfully.",
-                },
-                content: [{
-                        type: 'text',
-                        text: "Memory saved successfully."
-                    }] // Optional convenience text
+                content: [{ type: 'text', text: message }]
             };
         }
         catch (error) {
             console.error("Error saving memory to SQLite:", error);
+            const message = `Failed to save memory for user ${userIdToUse}: ${error.message || 'Unknown error'}`;
             return {
-                structuredContent: {
-                    success: false,
-                    message: `Failed to save memory: ${error.message || 'Unknown error'}`,
-                }
+                content: [{ type: 'text', text: message }]
             };
         }
     });
 }
-exports.saveMemoryHandler = saveMemoryHandler;
+// MCP Tool Definition
+const saveMemoryToolDefinition = {
+    name: exports.saveMemoryName,
+    description: exports.saveMemoryDescription,
+    inputSchema: exports.SaveMemoryInputSchema.shape,
+    handler: (params, extra) => __awaiter(void 0, void 0, void 0, function* () {
+        const authenticatedUserId = extra === null || extra === void 0 ? void 0 : extra.authenticatedUserId;
+        // Fallback to DEFAULT_TEST_USER_ID if no user in context
+        const userIdToUse = authenticatedUserId || models_js_2.DEFAULT_TEST_USER_ID;
+        if (!authenticatedUserId) {
+            console.warn(`save_memory: authenticatedUserId not found in 'extra' context. Using default: ${models_js_2.DEFAULT_TEST_USER_ID}`);
+        }
+        return internalSaveMemoryHandler(params, userIdToUse);
+    })
+};
+// Exported registration function
+function registerSaveMemoryTool(server) {
+    server.tool(saveMemoryToolDefinition.name, saveMemoryToolDefinition.inputSchema, saveMemoryToolDefinition.handler);
+    console.log(`Tool registered: ${saveMemoryToolDefinition.name}`);
+}
+exports.registerSaveMemoryTool = registerSaveMemoryTool;
+// Original saveMemoryHandler and other exports are removed or integrated above
+// to avoid conflicts and streamline for MCP registration. 

@@ -9,82 +9,61 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.retrievePersonalMemoryHandler = exports.RetrievePersonalMemoryInputSchema = exports.retrievePersonalMemoryDescription = exports.retrievePersonalMemoryName = void 0;
+exports.registerRetrievePersonalMemoryTool = exports.RetrievePersonalMemoryInputSchema = exports.retrievePersonalMemoryDescription = exports.retrievePersonalMemoryName = void 0;
 const zod_1 = require("zod");
-const sequelize_1 = require("sequelize"); // Assuming Sequelize and Op for LIKE query
-// Assuming Memory model type will be available via db.models.Memory
+const models_js_1 = require("../db/models.js"); // Use relative path
+const models_js_2 = require("../db/models.js"); // Import default user ID
 exports.retrievePersonalMemoryName = "retrieve_personal_memory";
 exports.retrievePersonalMemoryDescription = "Retrieve your own memories based on a search query.";
 exports.RetrievePersonalMemoryInputSchema = zod_1.z.object({
-    query: zod_1.z.string().min(1, "Search query cannot be empty."),
+    query: zod_1.z.string().min(1, "Search query cannot be empty.")
 });
-function retrievePersonalMemoryHandler(input, req, db // db is the Sequelize instance
+// Internal handler logic using actual DB operations
+function internalRetrievePersonalMemoryHandler(input, userIdToUse // Now expects a definite userId
 ) {
-    var _a;
     return __awaiter(this, void 0, void 0, function* () {
-        const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
-        if (!userId) {
-            // This case should ideally be prevented by the authMiddleware.
-            return {
-                structuredContent: {},
-                content: [{
-                        type: "text",
-                        text: "Error: User not authenticated. Cannot retrieve memories."
-                    }]
-            };
-        }
         const { query } = input;
+        const db = (0, models_js_1.getDb)();
         try {
-            // Access the Memory model through the db instance
-            const MemoryModel = db.models.Memory;
-            if (!MemoryModel) {
-                console.error("Memory model is not defined on db.models");
-                return {
-                    structuredContent: {},
-                    content: [{
-                            type: "text",
-                            text: "Error: Server configuration issue, Memory model not found."
-                        }]
-                };
-            }
-            const memories = yield MemoryModel.findAll({
-                where: {
-                    user_id: userId,
-                    content: {
-                        [sequelize_1.Op.like]: `%${query}%`, // Case-insensitive search for most SQL dialects
-                    },
-                },
-                order: [['createdAt', 'DESC']],
-                limit: 10, // Limit the number of results to keep responses manageable
-            });
+            const memories = yield db.all(`SELECT id, content, created_at FROM Memory WHERE user_id = ? AND content LIKE ? ORDER BY created_at DESC LIMIT 10`, userIdToUse, `%${query}%`);
+            let message;
             if (!memories || memories.length === 0) {
-                return {
-                    structuredContent: {},
-                    content: [{
-                            type: "text",
-                            text: "No memories found matching your query."
-                        }]
-                };
+                message = `No memories found for user ${userIdToUse} matching query '${query}'.`;
+            }
+            else {
+                const memoriesText = memories.map((mem) => `  - ID: ${mem.id}, Content: \"${mem.content}\", Recalled from: ${new Date(mem.created_at).toISOString().split('T')[0]}`).join("\n");
+                message = `Found ${memories.length} memories for user ${userIdToUse} matching '${query}':\n${memoriesText}`;
             }
             return {
-                structuredContent: {},
-                content: memories.map((mem) => ({
-                    type: "text",
-                    text: `Memory (ID: ${mem.id}): "${mem.content}" (Recalled from: ${mem.createdAt.toISOString().split('T')[0]})`
-                }))
+                content: [{ type: "text", text: message }]
             };
         }
         catch (error) {
-            console.error("Error in retrievePersonalMemoryHandler:", error);
-            // Provide a generic error message to the user
+            console.error("Error in internalRetrievePersonalMemoryHandler:", error);
+            const message = `An error occurred while retrieving memories for user ${userIdToUse}: ${error.message}`;
             return {
-                structuredContent: {},
-                content: [{
-                        type: "text",
-                        text: `An error occurred while retrieving memories: ${error.message}`
-                    }]
+                content: [{ type: "text", text: message }]
             };
         }
     });
 }
-exports.retrievePersonalMemoryHandler = retrievePersonalMemoryHandler;
+// MCP Tool Definition
+const retrievePersonalMemoryToolDefinition = {
+    name: exports.retrievePersonalMemoryName,
+    description: exports.retrievePersonalMemoryDescription,
+    inputSchema: exports.RetrievePersonalMemoryInputSchema.shape,
+    handler: (params, extra) => __awaiter(void 0, void 0, void 0, function* () {
+        const authenticatedUserId = extra === null || extra === void 0 ? void 0 : extra.authenticatedUserId;
+        // Fallback to DEFAULT_TEST_USER_ID if no user in context
+        const userIdToUse = authenticatedUserId || models_js_2.DEFAULT_TEST_USER_ID;
+        if (!authenticatedUserId) {
+            console.warn(`retrieve_personal_memory: authenticatedUserId not found in 'extra' context. Using default: ${models_js_2.DEFAULT_TEST_USER_ID}`);
+        }
+        return internalRetrievePersonalMemoryHandler(params, userIdToUse);
+    })
+};
+function registerRetrievePersonalMemoryTool(server) {
+    server.tool(retrievePersonalMemoryToolDefinition.name, retrievePersonalMemoryToolDefinition.inputSchema, retrievePersonalMemoryToolDefinition.handler);
+    console.log(`Tool registered: ${retrievePersonalMemoryToolDefinition.name}`);
+}
+exports.registerRetrievePersonalMemoryTool = registerRetrievePersonalMemoryTool;

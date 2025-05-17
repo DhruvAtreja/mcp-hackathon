@@ -12,10 +12,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDb = exports.initDb = void 0;
+exports.getDb = exports.initDb = exports.ANOTHER_TEST_USERNAME = exports.ANOTHER_TEST_USER_ID = exports.DEFAULT_TEST_USERNAME = exports.DEFAULT_TEST_USER_ID = void 0;
 const sqlite3_1 = __importDefault(require("sqlite3"));
 const sqlite_1 = require("sqlite");
 let db = null;
+exports.DEFAULT_TEST_USER_ID = 'user_default_test_uuid';
+exports.DEFAULT_TEST_USERNAME = 'default_test_user';
+exports.ANOTHER_TEST_USER_ID = 'user_another_test_uuid';
+exports.ANOTHER_TEST_USERNAME = 'another_test_user';
 function initDb(dbPath = './skynet.db') {
     return __awaiter(this, void 0, void 0, function* () {
         if (db) {
@@ -25,6 +29,8 @@ function initDb(dbPath = './skynet.db') {
             filename: dbPath,
             driver: sqlite3_1.default.Database
         });
+        // Enable foreign key support
+        yield db.exec('PRAGMA foreign_keys = ON;');
         yield db.exec(`
     CREATE TABLE IF NOT EXISTS User (
       id TEXT PRIMARY KEY,
@@ -63,6 +69,14 @@ function initDb(dbPath = './skynet.db') {
       FOREIGN KEY (granter_user_id) REFERENCES User(id)
     );
   `);
+        // Ensure default test users exist
+        try {
+            yield db.run('INSERT OR IGNORE INTO User (id, username, auth_token) VALUES (?, ?, ?), (?, ?, ?)', exports.DEFAULT_TEST_USER_ID, exports.DEFAULT_TEST_USERNAME, `${exports.DEFAULT_TEST_USERNAME}_token`, exports.ANOTHER_TEST_USER_ID, exports.ANOTHER_TEST_USERNAME, `${exports.ANOTHER_TEST_USERNAME}_token`);
+            console.log(`Ensured default users (${exports.DEFAULT_TEST_USERNAME}, ${exports.ANOTHER_TEST_USERNAME}) exist.`);
+        }
+        catch (error) {
+            console.error('Error ensuring default users exist:', error);
+        }
         console.log('Database initialized and tables created/ensured.');
         return db;
     });

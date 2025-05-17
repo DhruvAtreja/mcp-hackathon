@@ -1,6 +1,7 @@
 import { z } from 'zod';
 // Removed problematic import: import { RequestHandlerExtra, ServerRequest, ServerNotification } from '@modelcontextprotocol/sdk/types.js';
-import { getDb } from '@src/db/models';
+import { getDb } from '../db/models.js';
+import { DEFAULT_TEST_USER_ID } from '../db/models.js'; // Import default user ID
 import { v4 as uuidv4 } from 'uuid';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'; // For McpServer type
@@ -46,50 +47,27 @@ export type SaveMemoryToolResult = CallToolResult;
 // Re-defining internal handler to be called by the MCP tool handler
 async function internalSaveMemoryHandler(
   input: z.infer<typeof SaveMemoryInputSchema>,
-  userId: string | undefined // Changed from context to explicit userId
+  userIdToUse: string // Now expects a definite userId
 ): Promise<CallToolResult> {
-  if (!userId) {
-    console.error('User not authenticated or user ID missing.');
-    return {
-      structuredContent: {
-        success: false,
-        message: "User not authenticated. Cannot save memory.",
-      }
-    };
-  }
-
   const memoryId = uuidv4();
   const currentTime = new Date().toISOString();
-  const db = getDb(); // Get DB instance here
+  const db = getDb();
 
   try {
     await db.run(
       'INSERT INTO Memory (id, user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      memoryId,
-      userId,
-      input.content,
-      currentTime,
-      currentTime
+      memoryId, userIdToUse, input.content, currentTime, currentTime
     );
-
+    
+    const message = `Memory saved successfully. ID: ${memoryId} for user ${userIdToUse}`;
     return {
-      structuredContent: {
-        success: true,
-        memoryId: memoryId,
-        message: "Memory saved successfully.",
-      },
-      content: [{ 
-        type: 'text' as const, 
-        text: "Memory saved successfully."
-      }] 
+      content: [{ type: 'text' as const, text: message }]
     };
   } catch (error: any) {
     console.error("Error saving memory to SQLite:", error);
+    const message = `Failed to save memory for user ${userIdToUse}: ${error.message || 'Unknown error'}`;
     return {
-      structuredContent: {
-        success: false,
-        message: `Failed to save memory: ${error.message || 'Unknown error'}`,
-      }
+      content: [{ type: 'text' as const, text: message }]
     };
   }
 }
@@ -100,14 +78,14 @@ const saveMemoryToolDefinition = {
   description: saveMemoryDescription,
   inputSchema: SaveMemoryInputSchema.shape, // Pass .shape for McpServer.tool
   handler: async (params: z.infer<typeof SaveMemoryInputSchema>, extra: any): Promise<CallToolResult> => {
-    const userId = extra?.authenticatedUserId; // Get userId from MCP context
-    // In a real app, ensure `authenticatedUserId` is consistently populated by your auth setup for MCP.
-    // For now, we can use a placeholder if it's missing for testing, or throw an error.
-    const effectiveUserId = userId || "mock_user_id_for_save_memory"; // Placeholder if not in extra
-    if (!userId) {
-        console.warn(`save_memory: authenticatedUserId not found in 'extra' context. Using placeholder: ${effectiveUserId}`);
+    const authenticatedUserId = extra?.authenticatedUserId;
+    // Fallback to DEFAULT_TEST_USER_ID if no user in context
+    const userIdToUse = authenticatedUserId || DEFAULT_TEST_USER_ID; 
+
+    if (!authenticatedUserId) {
+        console.warn(`save_memory: authenticatedUserId not found in 'extra' context. Using default: ${DEFAULT_TEST_USER_ID}`);
     }
-    return internalSaveMemoryHandler(params, effectiveUserId);
+    return internalSaveMemoryHandler(params, userIdToUse);
   }
 };
 

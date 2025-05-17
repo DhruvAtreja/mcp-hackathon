@@ -3,6 +3,11 @@ import { open, Database } from 'sqlite';
 
 let db: Database | null = null;
 
+export const DEFAULT_TEST_USER_ID = 'user_default_test_uuid';
+export const DEFAULT_TEST_USERNAME = 'default_test_user';
+export const ANOTHER_TEST_USER_ID = 'user_another_test_uuid';
+export const ANOTHER_TEST_USERNAME = 'another_test_user';
+
 export async function initDb(dbPath: string = './skynet.db'): Promise<Database> {
   if (db) {
     return db;
@@ -11,6 +16,9 @@ export async function initDb(dbPath: string = './skynet.db'): Promise<Database> 
     filename: dbPath,
     driver: sqlite3.Database
   });
+
+  // Enable foreign key support
+  await db.exec('PRAGMA foreign_keys = ON;');
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS User (
@@ -50,6 +58,18 @@ export async function initDb(dbPath: string = './skynet.db'): Promise<Database> 
       FOREIGN KEY (granter_user_id) REFERENCES User(id)
     );
   `);
+
+  // Ensure default test users exist
+  try {
+    await db.run(
+      'INSERT OR IGNORE INTO User (id, username, auth_token) VALUES (?, ?, ?), (?, ?, ?)',
+      DEFAULT_TEST_USER_ID, DEFAULT_TEST_USERNAME, `${DEFAULT_TEST_USERNAME}_token`,
+      ANOTHER_TEST_USER_ID, ANOTHER_TEST_USERNAME, `${ANOTHER_TEST_USERNAME}_token`
+    );
+    console.log(`Ensured default users (${DEFAULT_TEST_USERNAME}, ${ANOTHER_TEST_USERNAME}) exist.`);
+  } catch (error) {
+    console.error('Error ensuring default users exist:', error);
+  }
 
   console.log('Database initialized and tables created/ensured.');
   return db;

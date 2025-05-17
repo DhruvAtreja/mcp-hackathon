@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { initDb } from "@src/db/models";
+import { initDb } from "../db/models";
 
 // Import tool registration functions from access-control.ts
 import {
