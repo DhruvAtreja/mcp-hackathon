@@ -1,7 +1,7 @@
 {
-  "name": "skynet-mcp",
+  "name": "hivemind-mcp",
   "version": "1.0.0",
-  "description": "SkyNet MCP Memory Implementation",
+  "description": "HiveMind MCP Memory Implementation",
   "main": "dist/src/server/index.js",
   "scripts": {
     "build": "tsc",

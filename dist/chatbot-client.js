@@ -171,7 +171,7 @@ class ChatbotMcpClient {
                     .filter((c) => c.type === "text")
                     .map((c) => c.text)
                     .join("\n");
-                console.log(`SkyNet LLM (${this.currentUsername}'s Agent): ${finalResponseText}`);
+                console.log(`HiveMind LLM (${this.currentUsername}'s Agent): ${finalResponseText}`);
                 return finalResponseText;
             }
             catch (error) {

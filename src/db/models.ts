@@ -8,7 +8,7 @@ export const DEFAULT_TEST_USERNAME = 'default_test_user';
 export const ANOTHER_TEST_USER_ID = 'user_another_test_uuid';
 export const ANOTHER_TEST_USERNAME = 'another_test_user';
 
-export async function initDb(dbPath: string = './skynet.db'): Promise<Database> {
+export async function initDb(dbPath: string = './hivemind.db'): Promise<Database> {
   if (db) {
     return db;
   }

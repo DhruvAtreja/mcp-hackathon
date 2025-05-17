@@ -18,13 +18,13 @@ const save_memory_js_1 = require("../tools/save-memory.js");
 const retrieve_personal_memory_js_1 = require("../tools/retrieve-personal-memory.js");
 function main() {
     return __awaiter(this, void 0, void 0, function* () {
-        console.error("SkyNet MCP Server: Initializing database...");
+        console.error("HiveMind MCP Server: Initializing database...");
         yield (0, models_1.initDb)();
-        console.error("SkyNet MCP Server: Database initialized.");
+        console.error("HiveMind MCP Server: Database initialized.");
         // Use console.error for server-side logging to keep stdout clean for JSON-RPC
-        console.error("SkyNet MCP Server: Initializing...");
+        console.error("HiveMind MCP Server: Initializing...");
         const server = new mcp_js_1.McpServer({
-            name: "skynet-mcp-server",
+            name: "hivemind-mcp-server",
             version: "0.1.0",
             capabilities: {
                 tools: {}, // Declare that this server provides tools
@@ -32,7 +32,7 @@ function main() {
                 // prompts: {},   // Future use
             },
         });
-        console.error("SkyNet MCP Server: Registering tools...");
+        console.error("HiveMind MCP Server: Registering tools...");
         // Register the access control tools
         (0, access_control_js_1.registerCreateAccessTokenTool)(server);
         (0, access_control_js_1.registerUseAccessTokenTool)(server);
@@ -46,15 +46,15 @@ function main() {
         // import { registerRetrievePersonalMemoryTool } from "../tools/retrieve-personal-memory.js";
         // registerSaveMemoryTool(server); (assuming it's updated for the new McpServer API)
         // registerRetrievePersonalMemoryTool(server); (assuming it's updated)
-        console.error("SkyNet MCP Server: All tools registered.");
+        console.error("HiveMind MCP Server: All tools registered.");
         const transport = new stdio_js_1.StdioServerTransport();
         try {
             // Connect the server instance to the chosen transport
             yield server.connect(transport);
-            console.error("SkyNet MCP Server: Connected to stdio transport. Listening for requests...");
+            console.error("HiveMind MCP Server: Connected to stdio transport. Listening for requests...");
         }
         catch (error) {
-            console.error("SkyNet MCP Server: Fatal error during server connection or while running:", error);
+            console.error("HiveMind MCP Server: Fatal error during server connection or while running:", error);
             process.exit(1); // Exit if the server cannot start or encounters a fatal error
         }
         // The server is now running and will handle requests over stdio.
@@ -62,6 +62,6 @@ function main() {
     });
 }
 main().catch((error) => {
-    console.error("SkyNet MCP Server: Unhandled fatal error in main execution:", error);
+    console.error("HiveMind MCP Server: Unhandled fatal error in main execution:", error);
     process.exit(1);
 });

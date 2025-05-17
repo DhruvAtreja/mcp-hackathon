@@ -160,7 +160,7 @@ class ChatbotMcpClient {
         .map((c: Anthropic.TextBlock) => c.text)
         .join("\n");
       
-      console.log(`SkyNet LLM (${this.currentUsername}'s Agent): ${finalResponseText}`);
+      console.log(`HiveMind LLM (${this.currentUsername}'s Agent): ${finalResponseText}`);
       return finalResponseText;
 
     } catch (error) {

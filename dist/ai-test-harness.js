@@ -74,10 +74,10 @@ function agent1_DefaultUser(client) {
         const userId = models_js_1.DEFAULT_TEST_USER_ID;
         console.log(`\n--- ${agentName} (${models_js_1.DEFAULT_TEST_USERNAME}) Actions ---`);
         // 1. Save some memories
-        yield callToolAsUser(client, "save_memory", { content: "User1 Memory Alpha: Project SkyNet details." }, userId, agentName);
+        yield callToolAsUser(client, "save_memory", { content: "User1 Memory Alpha: Project HiveMind details." }, userId, agentName);
         yield callToolAsUser(client, "save_memory", { content: "User1 Memory Beta: Important meeting notes." }, userId, agentName);
         // 2. Retrieve personal memory to confirm save
-        yield callToolAsUser(client, "retrieve_personal_memory", { query: "SkyNet" }, userId, agentName);
+        yield callToolAsUser(client, "retrieve_personal_memory", { query: "HiveMind" }, userId, agentName);
         // 3. Create an access token for User2 (another_test_user)
         console.log(`[${agentName}] Creating access token for ${models_js_1.ANOTHER_TEST_USERNAME} to read memories...`);
         const tokenResult = yield callToolAsUser(client, "create_access_token", { access_level: "read", expiration_hours: 1 }, userId, agentName);
@@ -129,8 +129,8 @@ function agent2_AnotherUser(client, tokenFromUser1) {
         // To make this pass without manual DB intervention for this test script, we'd need use_access_token to create a permission.
         // Or, the test setup must ensure a direct permission exists.
         // The current test will likely fail at retrieve_shared_memory unless direct permission is already in DB for ANOTHER_TEST_USER_ID to DEFAULT_TEST_USER_ID.
-        console.log(`[${agentName}] Attempting to retrieve memories from ${models_js_1.DEFAULT_TEST_USERNAME} using query 'SkyNet'...`);
-        yield callToolAsUser(client, "retrieve_shared_memory", { shared_by_username: models_js_1.DEFAULT_TEST_USERNAME, query: "SkyNet" }, userId, agentName);
+        console.log(`[${agentName}] Attempting to retrieve memories from ${models_js_1.DEFAULT_TEST_USERNAME} using query 'HiveMind'...`);
+        yield callToolAsUser(client, "retrieve_shared_memory", { shared_by_username: models_js_1.DEFAULT_TEST_USERNAME, query: "HiveMind" }, userId, agentName);
         console.log(`[${agentName}] Attempting to retrieve memories from ${models_js_1.DEFAULT_TEST_USERNAME} using query 'meeting'...`);
         yield callToolAsUser(client, "retrieve_shared_memory", { shared_by_username: models_js_1.DEFAULT_TEST_USERNAME, query: "meeting" }, userId, agentName);
     });

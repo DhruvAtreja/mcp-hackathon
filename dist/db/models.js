@@ -20,7 +20,7 @@ exports.DEFAULT_TEST_USER_ID = 'user_default_test_uuid';
 exports.DEFAULT_TEST_USERNAME = 'default_test_user';
 exports.ANOTHER_TEST_USER_ID = 'user_another_test_uuid';
 exports.ANOTHER_TEST_USERNAME = 'another_test_user';
-function initDb(dbPath = './skynet.db') {
+function initDb(dbPath = './hivemind.db') {
     return __awaiter(this, void 0, void 0, function* () {
         if (db) {
             return db;
